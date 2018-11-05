@@ -1,128 +1,55 @@
-# ELK stack designed for container-native deployment
-# on Joyent's Triton platform.
+version: '2'
 
-# ---------------------------------------------------
-# The Kibana application queries the ES cluster
+services:
 
-kibana:
-    image: autopilotpattern/kibana:latest
-    mem_limit: 1g
-    restart: always
-    labels:
-      - triton.cns.services=kibana
+  elasticsearch:
+    build:
+      context: elasticsearch/
+      args:
+        ELK_VERSION: $ELK_VERSION
+    volumes:
+      - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
     ports:
-      - 5601 # default Kibana port
-    env_file: _env
+      - "9200:9200"
+      - "9300:9300"
     environment:
-      - CONFIG_PATH=/usr/share/kibana/config/kibana.yml
-      - NODE_ENV=production
-      - CONTAINERPILOT=file:///etc/containerpilot.json
-    command: >
-      /usr/local/bin/containerpilot
-      /usr/share/kibana/node/bin/node
-      /usr/share/kibana/src/cli
+      ES_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - elk
 
-# ---------------------------------------------------
-# The logstash container is the target of Docker log drivers
-
-logstash:
-    image: autopilotpattern/logstash:latest
-    mem_limit: 1g
-    restart: always
-    labels:
-      - triton.cns.services=logstash
+  logstash:
+    build:
+      context: logstash/
+      args:
+        ELK_VERSION: $ELK_VERSION
+    volumes:
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./logstash/pipeline:/usr/share/logstash/pipeline:ro
     ports:
-    # because the ports are chosen by the log_driver config
-    # these are fairly arbitrary but we're keeping them at
-    # the typical non-container values for familiarity
-    - "514"       # syslog tcp port
-    - "514/udp"   # syslog udp port
-    - "12201"     # gelf
-    - "12201/udp" # gelf udp port
-    # - "24224"     # fluentd tcp port
-    env_file: _env
+      - "5000:5000"
+      - "9600:9600"
     environment:
-      - CONTAINERPILOT=file:///etc/containerpilot.json
-    command: >
-      /usr/local/bin/containerpilot
-      /opt/logstash/bin/logstash -f /etc/logstash/conf.d/logstash.conf
+      LS_JAVA_OPTS: "-Xmx256m -Xms256m"
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch
 
-# ---------------------------------------------------
-# This common service definition is the default for nodes that both store
-# data and act as potential masternodes. It also serves as a template for
-# master-only and data-only ES nodes.
-
-elasticsearch:
-    image: autopilotpattern/elasticsearch:latest
-    mem_limit: 4g
-    restart: always
-    labels:
-      - triton.cns.services=elasticsearch-master
-
-    env_file: _env
-    environment:
-      - ES_SERVICE_NAME=elasticsearch-master
-      - CLUSTER_NAME=elasticsearch
-      - ES_HEAP_SIZE=1g # set to 50% of mem_limit, but no more than 31g
-      - ES_NODE_MASTER=true # default
-      - ES_NODE_DATA=true   # default
-      - CONTAINERPILOT=file:///etc/containerpilot.json
-
-      # set the number of threads we want based on the number of CPU shares
-      # that we'll get for this size container on Triton
-      - ES_JAVA_OPTS=-XX:-UseGCTaskAffinity -XX:-BindGCTaskThreadsToCPUs -XX:ParallelGCThreads=1 -XX:ParallelCMSThreads=1
-      # ES_HEAP_NEWSIZE # optional override
-      # ES_DIRECT_SIZE  # optional override
-
-    command: >
-      /usr/local/bin/containerpilot
-      /usr/share/elasticsearch/bin/elasticsearch
-      --default.path.conf=/etc/elasticsearch
-
-# ---------------------------------------------------
-# The master-only node serves as the coordinator of the cluster only
-
-elasticsearch_master:
-    extends:
-      service: elasticsearch
-    labels:
-      - triton.cns.services=elasticsearch-master
-    environment:
-      - ES_SERVICE_NAME=elasticsearch-master
-      - ES_NODE_MASTER=true
-      - ES_NODE_DATA=false
-
-# ---------------------------------------------------
-# Data-only nodes never act as master nodes.
-
-elasticsearch_data:
-    extends:
-      service: elasticsearch
-    labels:
-      - triton.cns.services=elasticsearch-data
-    environment:
-      - ES_SERVICE_NAME=elasticsearch-data
-      - ES_NODE_MASTER=false
-      - ES_NODE_DATA=true
-
-# ---------------------------------------------------
-# Consul as a service discovery tier
-
-consul:
-    image: progrium/consul:latest
-    labels:
-      - triton.cns.services=consul
-    command: -server -bootstrap -ui-dir /ui
-    restart: always
-    mem_limit: 128m
+  kibana:
+    build:
+      context: kibana/
+      args:
+        ELK_VERSION: $ELK_VERSION
+    volumes:
+      - ./kibana/config/:/usr/share/kibana/config:ro
     ports:
-      - 8500
-    expose:
-      - 53
-      - 8300
-      - 8301
-      - 8302
-      - 8400
-      - 8500
-    dns:
-      - 127.0.0.1
+      - "5601:5601"
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch
+
+networks:
+
+  elk:
+    driver: bridge

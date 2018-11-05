@@ -1,116 +1,303 @@
-Autopilot Pattern ELK
-==========
+# Elastic stack (ELK) on Docker
 
-*[Autopilot Pattern](http://autopilotpattern.io/) implementation of ELK*
+[![Join the chat at https://gitter.im/deviantony/docker-elk](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/deviantony/docker-elk?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![Elastic Stack version](https://img.shields.io/badge/ELK-6.4.2-blue.svg?style=flat)](https://github.com/deviantony/docker-elk/issues/332)
+[![Build Status](https://api.travis-ci.org/deviantony/docker-elk.svg?branch=master)](https://travis-ci.org/deviantony/docker-elk)
 
-- [Elasticsearch](https://github.com/autopilotpattern/elasticsearch): [![DockerPulls](https://img.shields.io/docker/pulls/autopilotpattern/elasticsearch.svg)](https://registry.hub.docker.com/u/autopilotpattern/elasticsearch/)
-[![DockerStars](https://img.shields.io/docker/stars/autopilotpattern/elasticsearch.svg)](https://registry.hub.docker.com/u/autopilotpattern/elasticsearch/)
-[![ImageLayers](https://badge.imagelayers.io/autopilotpattern/elasticsearch:latest.svg)](https://imagelayers.io/?images=autopilotpattern/elasticsearch:latest)
-- [Logstash](https://github.com/autopilotpattern/elk/tree/master/logstash): [![DockerPulls](https://img.shields.io/docker/pulls/autopilotpattern/logstash.svg)](https://registry.hub.docker.com/u/autopilotpattern/logstash/)
-[![DockerStars](https://img.shields.io/docker/stars/autopilotpattern/logstash.svg)](https://registry.hub.docker.com/u/autopilotpattern/logstash/)
-[![ImageLayers](https://badge.imagelayers.io/autopilotpattern/logstash:latest.svg)](https://imagelayers.io/?images=autopilotpattern/logstash:latest)
-- [Kibana](https://github.com/autopilotpattern/elk/tree/master/kibana): [![DockerPulls](https://img.shields.io/docker/pulls/autopilotpattern/kibana.svg)](https://registry.hub.docker.com/u/autopilotpattern/kibana/)
-[![DockerStars](https://img.shields.io/docker/stars/autopilotpattern/kibana.svg)](https://registry.hub.docker.com/u/autopilotpattern/kibana/)
-[![ImageLayers](https://badge.imagelayers.io/autopilotpattern/kibana:latest.svg)](https://imagelayers.io/?images=autopilotpattern/kibana:latest)
-- Chat: [![Join the chat at https://gitter.im/autopilotpattern/general](https://badges.gitter.im/autopilotpattern/general.svg)](https://gitter.im/autopilotpattern/general)
+Run the latest version of the [Elastic stack](https://www.elastic.co/elk-stack) with Docker and Docker Compose.
 
-This repo is a demonstration of the [Elasticsearch-Logstash-Kibana (ELK)](https://www.elastic.co/products) stack, designed to be self-operating according to the [autopilot pattern](http://autopilotpattern.io/). This application also demonstrates Triton support of Docker log drivers.
+It will give you the ability to analyze any data set by using the searching/aggregation capabilities of Elasticsearch
+and the visualization power of Kibana.
 
-The components of this stack are:
+Based on the official Docker images from Elastic:
 
-- [Elasticsearch](https://www.elastic.co/products/elasticsearch), to store and search our logs.
-- [Logstash](https://www.elastic.co/products/logstash), to ingest logs from our containers and write them to Elasticsearch.
-- [Kibana](https://www.elastic.co/products/kibana), as a web UI to search the logs we store in Elasticsearch.
-- [Consul](https://www.consul.io/), acting a service catalog to support discovery
-- [ContainerPilot](https://github.com/joyent/containerpilot), to help with service discovery and bootstrap orchestration
-- [Triton](https://www.joyent.com/), Joyent's container-native infrastructure platform.
-- [Nginx](https://www.nginx.com/), acting as a source of logs for testing.
+* [elasticsearch](https://github.com/elastic/elasticsearch-docker)
+* [logstash](https://github.com/elastic/logstash-docker)
+* [kibana](https://github.com/elastic/kibana-docker)
 
-![Diagram of Triton-ELK architecture](./doc/triton-elk.png)
+**Note**: Other branches in this project are available:
 
-The ELK stack components all have configuration files that expect hard-coded IP addresses for their dependencies; Kibana and Logstash need an IP for Elasticsearch and Elasticsearch nodes need the IP of one other node to bootstrap clustering. Each container has a startup script configured as a ContainerPilot `preStart` handler to update the config file prior to starting the main application.
+* [`x-pack`](https://github.com/deviantony/docker-elk/tree/x-pack): X-Pack support
+* [`searchguard`](https://github.com/deviantony/docker-elk/tree/searchguard): Search Guard support
+* [`vagrant`](https://github.com/deviantony/docker-elk/tree/vagrant): run Docker inside Vagrant
 
-Additionally, the ELK application expects certain indexes to be created in Elasticsearch. When the Kibana application starts, the `preStart` handler script (`manage.sh`) will write these indexes to Elasticsearch and will send a log entry to Logstash so that the Logstash application can create its initial schema.
+## Contents
 
-### Getting started
+1. [Requirements](#requirements)
+   * [Host setup](#host-setup)
+   * [SELinux](#selinux)
+   * [Docker for Windows](#docker-for-windows)
+2. [Getting started](#getting-started)
+   * [Bringing up the stack](#bringing-up-the-stack)
+   * [Initial setup](#initial-setup)
+3. [Configuration](#configuration)
+   * [How can I tune the Kibana configuration?](#how-can-i-tune-the-kibana-configuration)
+   * [How can I tune the Logstash configuration?](#how-can-i-tune-the-logstash-configuration)
+   * [How can I tune the Elasticsearch configuration?](#how-can-i-tune-the-elasticsearch-configuration)
+   * [How can I scale out the Elasticsearch cluster?](#how-can-i-scale-up-the-elasticsearch-cluster)
+4. [Storage](#storage)
+   * [How can I persist Elasticsearch data?](#how-can-i-persist-elasticsearch-data)
+5. [Extensibility](#extensibility)
+   * [How can I add plugins?](#how-can-i-add-plugins)
+   * [How can I enable the provided extensions?](#how-can-i-enable-the-provided-extensions)
+6. [JVM tuning](#jvm-tuning)
+   * [How can I specify the amount of memory used by a service?](#how-can-i-specify-the-amount-of-memory-used-by-a-service)
+   * [How can I enable a remote JMX connection to a service?](#how-can-i-enable-a-remote-jmx-connection-to-a-service)
+7. [Going further](#going-further)
+   * [Using a newer stack version](#using-a-newer-stack-version)
+   * [Plugins and integrations](#plugins-and-integrations)
+   * [Docker Swarm](#docker-swarm)
 
-1. [Get a Joyent account](https://my.joyent.com/landing/signup/) and [add your SSH key](https://docs.joyent.com/public-cloud/getting-started).
-1. Install the [Docker Toolbox](https://docs.docker.com/installation/mac/) (including `docker` and `docker-compose`) on your laptop or other environment, as well as the [Joyent Triton CLI](https://www.joyent.com/blog/introducing-the-triton-command-line-tool) (`triton` replaces our old `sdc-*` CLI tools)
-1. [Configure Docker and Docker Compose for use with Joyent](https://docs.joyent.com/public-cloud/api-access/docker):
+## Requirements
 
-```bash
-curl -O https://raw.githubusercontent.com/joyent/sdc-docker/master/tools/sdc-docker-setup.sh && chmod +x sdc-docker-setup.sh
-./sdc-docker-setup.sh -k us-east-1.api.joyent.com <ACCOUNT> ~/.ssh/<PRIVATE_KEY_FILE>
+### Host setup
+
+1. Install [Docker](https://www.docker.com/community-edition#/download) version **17.05+**
+2. Install [Docker Compose](https://docs.docker.com/compose/install/) version **1.6.0+**
+3. Clone this repository
+
+### SELinux
+
+On distributions which have SELinux enabled out-of-the-box you will need to either re-context the files or set SELinux
+into Permissive mode in order for docker-elk to start properly. For example on Redhat and CentOS, the following will
+apply the proper context:
+
+```console
+$ chcon -R system_u:object_r:admin_home_t:s0 docker-elk/
 ```
 
-Check that everything is configured correctly by running `./test.sh check`. If it returns without an error you're all set. This script will create and `_env` file that includes the Triton CNS name for the Consul service.
+### Docker for Windows
 
+If you're using Docker for Windows, ensure the "Shared Drives" feature is enabled for the `C:` drive (Docker for Windows > Settings > Shared Drives). See [Configuring Docker for Windows Shared Drives](https://blogs.msdn.microsoft.com/stevelasker/2016/06/14/configuring-docker-for-windows-volumes/) (MSDN Blog).
 
-### Start the stack
+## Usage
 
-You can run the entire application with just Docker Compose:
+### Bringing up the stack
 
-```sh
-$ docker-compose -p elk up -d
-Creating elk_consul_1
-Creating elk_elasticsearch_master_1
-Creating elk_elasticsearch_1
-Creating elk_elasticsearch_data_1
-Creating elk_logstash_1
-Creating elk_kibana_1
+**Note**: In case you switched branch or updated a base image - you may need to run `docker-compose build` first
 
-$ docker-compose -p elk ps
+Start the stack using `docker-compose`:
 
-Name                          Command           State    Ports
---------------------------------------------------------------------------------
-elk_consul_1                 /bin/start -server    Up   53/tcp, 53/udp,
-                             -bootst ...                8300/tcp, 8301/tcp,
-                                                        8301/udp, 8302/tcp,
-                                                        8302/udp, 8400/tcp,
-                                                        0.0.0.0:8500->8500/tcp
-elk_elasticsearch_1          /bin/containerpilot   Up   9200/tcp, 9300/tcp
-                             /usr/share/elastic...
-elk_elasticsearch_data_1     /bin/containerpilot   Up   9200/tcp, 9300/tcp
-                             /usr/share/elastic...
-elk_elasticsearch_master_1   /bin/containerpilot   Up   9200/tcp, 9300/tcp
-                             /usr/share/elastic...
-elk_kibana_1                 /bin/containerpilot   Up   0.0.0.0:5601->5601/tcp
-                             /usr/share/kibana...
-elk_logstash_1               /bin/containerpilot   Up   0.0.0.0:12201->12201/tcp,
-                             /usr/share/logstas...      0.0.0.0:12201->12201/udp
-                                                        24224/tcp,
-                                                        0.0.0.0:514->514/tcp,
-                                                        0.0.0.0:514->514/udp
+```console
+$ docker-compose up
 ```
 
-Within a few moments all components of the application will be registered in the Consul discovery service and will have found the other components they need. We can add new nodes to Elasticsearch just by running `docker-compose -p scale <node type>=<number of nodes>`.
+You can also run all services in the background (detached mode) by adding the `-d` flag to the above command.
 
-### Run the test rig
+Give Kibana a few seconds to initialize, then access the Kibana web UI by hitting
+[http://localhost:5601](http://localhost:5601) with a web browser.
 
-The test script included with this repo can open the Consul and Kibana web consoles on systems that support the `open` command (ex. OS X):
+By default, the stack exposes the following ports:
+* 5000: Logstash TCP input.
+* 9200: Elasticsearch HTTP
+* 9300: Elasticsearch TCP transport
+* 5601: Kibana
 
-```
-./test.sh show
-Waiting for Consul...
-Opening Consul console... Refresh the page to watch services register.
-Waiting for Kibana to register as healthy...
-Opening Kibana console.
-```
+**WARNING**: If you're using `boot2docker`, you must access it via the `boot2docker` IP address instead of `localhost`.
 
-This repo also includes a Docker Compose file for starting Nginx containers that are configured to use either the syslog or gelf log driver.
+**WARNING**: If you're using *Docker Toolbox*, you must access it via the `docker-machine` IP address instead of
+`localhost`.
 
-```sh
-$ ./test.sh -p elk test syslog
-Starting Nginx log source...
-Pulling nginx_syslog (autopilotpattern/nginx-elk-demo:latest)...
-latest: Pulling from autopilotpattern/nginx-elk-demo
-...
-Creating elk_nginx_syslog_1
-Waiting for Nginx to register as healthy...
+Now that the stack is running, you will want to inject some log entries. The shipped Logstash configuration allows you
+to send content via TCP:
 
-Opening web page.
+```console
+$ nc localhost 5000 < /path/to/logfile.log
 ```
 
-HTTP requests that we send to Nginx will be logged and be visible in Kibana.
+## Initial setup
 
-![Screenshot of Kibana](./doc/kibana.png)
+### Default Kibana index pattern creation
+
+When Kibana launches for the first time, it is not configured with any index pattern.
+
+#### Via the Kibana web UI
+
+**NOTE**: You need to inject data into Logstash before being able to configure a Logstash index pattern via the Kibana web
+UI. Then all you have to do is hit the *Create* button.
+
+Refer to [Connect Kibana with
+Elasticsearch](https://www.elastic.co/guide/en/kibana/current/connect-to-elasticsearch.html) for detailed instructions
+about the index pattern configuration.
+
+#### On the command line
+
+Create an index pattern via the Kibana API:
+
+```console
+$ curl -XPOST -D- 'http://localhost:5601/api/saved_objects/index-pattern' \
+    -H 'Content-Type: application/json' \
+    -H 'kbn-version: 6.4.2' \
+    -d '{"attributes":{"title":"logstash-*","timeFieldName":"@timestamp"}}'
+```
+
+The created pattern will automatically be marked as the default index pattern as soon as the Kibana UI is opened for the first time.
+
+## Configuration
+
+**NOTE**: Configuration is not dynamically reloaded, you will need to restart the stack after any change in the
+configuration of a component.
+
+### How can I tune the Kibana configuration?
+
+The Kibana default configuration is stored in `kibana/config/kibana.yml`.
+
+It is also possible to map the entire `config` directory instead of a single file.
+
+### How can I tune the Logstash configuration?
+
+The Logstash configuration is stored in `logstash/config/logstash.yml`.
+
+It is also possible to map the entire `config` directory instead of a single file, however you must be aware that
+Logstash will be expecting a
+[`log4j2.properties`](https://github.com/elastic/logstash-docker/tree/master/build/logstash/config) file for its own
+logging.
+
+### How can I tune the Elasticsearch configuration?
+
+The Elasticsearch configuration is stored in `elasticsearch/config/elasticsearch.yml`.
+
+You can also specify the options you want to override directly via environment variables:
+
+```yml
+elasticsearch:
+
+  environment:
+    network.host: "_non_loopback_"
+    cluster.name: "my-cluster"
+```
+
+### How can I scale out the Elasticsearch cluster?
+
+Follow the instructions from the Wiki: [Scaling out
+Elasticsearch](https://github.com/deviantony/docker-elk/wiki/Elasticsearch-cluster)
+
+## Storage
+
+### How can I persist Elasticsearch data?
+
+The data stored in Elasticsearch will be persisted after container reboot but not after container removal.
+
+In order to persist Elasticsearch data even after removing the Elasticsearch container, you'll have to mount a volume on
+your Docker host. Update the `elasticsearch` service declaration to:
+
+```yml
+elasticsearch:
+
+  volumes:
+    - /path/to/storage:/usr/share/elasticsearch/data
+```
+
+This will store Elasticsearch data inside `/path/to/storage`.
+
+**NOTE:** beware of these OS-specific considerations:
+* **Linux:** the [unprivileged `elasticsearch` user][esuser] is used within the Elasticsearch image, therefore the
+  mounted data directory must be owned by the uid `1000`.
+* **macOS:** the default Docker for Mac configuration allows mounting files from `/Users/`, `/Volumes/`, `/private/`,
+  and `/tmp` exclusively. Follow the instructions from the [documentation][macmounts] to add more locations.
+
+[esuser]: https://github.com/elastic/elasticsearch-docker/blob/016bcc9db1dd97ecd0ff60c1290e7fa9142f8ddd/templates/Dockerfile.j2#L22
+[macmounts]: https://docs.docker.com/docker-for-mac/osxfs/
+
+## Extensibility
+
+### How can I add plugins?
+
+To add plugins to any ELK component you have to:
+
+1. Add a `RUN` statement to the corresponding `Dockerfile` (eg. `RUN logstash-plugin install logstash-filter-json`)
+2. Add the associated plugin code configuration to the service configuration (eg. Logstash input/output)
+3. Rebuild the images using the `docker-compose build` command
+
+### How can I enable the provided extensions?
+
+A few extensions are available inside the [`extensions`](extensions) directory. These extensions provide features which
+are not part of the standard Elastic stack, but can be used to enrich it with extra integrations.
+
+The documentation for these extensions is provided inside each individual subdirectory, on a per-extension basis. Some
+of them require manual changes to the default ELK configuration.
+
+## JVM tuning
+
+### How can I specify the amount of memory used by a service?
+
+By default, both Elasticsearch and Logstash start with [1/4 of the total host
+memory](https://docs.oracle.com/javase/8/docs/technotes/guides/vm/gctuning/parallel.html#default_heap_size) allocated to
+the JVM Heap Size.
+
+The startup scripts for Elasticsearch and Logstash can append extra JVM options from the value of an environment
+variable, allowing the user to adjust the amount of memory that can be used by each component:
+
+| Service       | Environment variable |
+|---------------|----------------------|
+| Elasticsearch | ES_JAVA_OPTS         |
+| Logstash      | LS_JAVA_OPTS         |
+
+To accomodate environments where memory is scarce (Docker for Mac has only 2 GB available by default), the Heap Size
+allocation is capped by default to 256MB per service in the `docker-compose.yml` file. If you want to override the
+default JVM configuration, edit the matching environment variable(s) in the `docker-compose.yml` file.
+
+For example, to increase the maximum JVM Heap Size for Logstash:
+
+```yml
+logstash:
+
+  environment:
+    LS_JAVA_OPTS: "-Xmx1g -Xms1g"
+```
+
+### How can I enable a remote JMX connection to a service?
+
+As for the Java Heap memory (see above), you can specify JVM options to enable JMX and map the JMX port on the Docker
+host.
+
+Update the `{ES,LS}_JAVA_OPTS` environment variable with the following content (I've mapped the JMX service on the port
+18080, you can change that). Do not forget to update the `-Djava.rmi.server.hostname` option with the IP address of your
+Docker host (replace **DOCKER_HOST_IP**):
+
+```yml
+logstash:
+
+  environment:
+    LS_JAVA_OPTS: "-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.port=18080 -Dcom.sun.management.jmxremote.rmi.port=18080 -Djava.rmi.server.hostname=DOCKER_HOST_IP -Dcom.sun.management.jmxremote.local.only=false"
+```
+
+## Going further
+
+### Using a newer stack version
+
+To use a different Elastic Stack version than the one currently available in the repository, simply change the version
+number inside the `.env` file, and rebuild the stack with:
+
+```console
+$ docker-compose build
+$ docker-compose up
+```
+
+**NOTE**: Always pay attention to the [upgrade instructions](https://www.elastic.co/guide/en/elasticsearch/reference/current/setup-upgrade.html)
+for each individual component before performing a stack upgrade.
+
+### Plugins and integrations
+
+See the following Wiki pages:
+
+* [External applications](https://github.com/deviantony/docker-elk/wiki/External-applications)
+* [Popular integrations](https://github.com/deviantony/docker-elk/wiki/Popular-integrations)
+
+### Docker Swarm
+
+Experimental support for Docker Swarm is provided in the form of a `docker-stack.yml` file, which can be deployed in an
+existing Swarm cluster using the following command:
+
+```console
+$ docker stack deploy -c docker-stack.yml elk
+```
+
+If all components get deployed without any error, the following command will show 3 running services:
+
+```console
+$ docker stack services elk
+```
+
+**NOTE:** to scale Elasticsearch in Swarm mode, configure *zen* to use the DNS name `tasks.elasticsearch` instead of
+`elasticsearch`.
