@@ -26,6 +26,7 @@ services:
     ports:
       - "5000:5000"
       - "9600:9600"
+      - "5044:5044"
     environment:
       LS_JAVA_OPTS: "-Xmx256m -Xms256m"
     networks:
@@ -46,6 +47,20 @@ services:
       - elk
     depends_on:
       - elasticsearch
+
+  filebeat:
+    build: filebeat/
+    volumes:
+      - ./filebeat/config:/etc/filebeat
+      - /var/log/nginx:/logs
+      - /var/log/nginx/:/var/log/nginx/
+    networks:
+      - elk
+    depends_on:
+      - elasticsearch
+    restart: unless-stopped
+
+
 
 networks:
 
